@@ -1,0 +1,26 @@
+# Machine-specific environments and configuration
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.env
+.env.*
+.vscode/
+.DS_Store
+
+# Download data/weights and generate results on the GPU machine.
+/data/
+/checkpoints/
+/results/
+/research/
+*.pt
+*.pth
+*.h5
+*.hdf5
+*.npy
+*.npz
+*.nii
+*.nii.gz
+*.mp4
+*.zip
+*.tar.gz

@@ -1,0 +1,13 @@
+# Candidate inference-only environment, based on the upstream versions.
+# Install torch==2.7.1 and torchvision==0.22.1 from the appropriate official
+# CUDA wheel index first. This subset has NOT been executed on a GPU yet.
+# Training, notebooks, Pillow_SIMD, and unrelated model backbones are omitted.
+numpy==2.2.2
+h5py==3.13.0
+scipy==1.15.1
+matplotlib==3.10.0
+pillow==11.1.0
+omegaconf==2.3.0
+einops==0.8.1
+timm==1.0.19
+transformers==4.55.0

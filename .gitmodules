@@ -1,0 +1,3 @@
+[submodule "external/DualTrack"]
+	path = external/DualTrack
+	url = https://github.com/ImFusionGmbH/DualTrack.git
