@@ -41,6 +41,49 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def load_dualtrack_2024_state(model, state) -> dict | None:
+    """Restore the known, unused legacy head, then strictly load every tensor."""
+    import torch
+
+    compatibility = None
+    weight = state.get("global_encoder.fc.weight")
+    bias = state.get("global_encoder.fc.bias")
+    if (
+        isinstance(weight, torch.Tensor) and tuple(weight.shape) == (12, 512)
+        and isinstance(bias, torch.Tensor) and tuple(bias.shape) == (12,)
+    ):
+        encoder = model.global_encoder
+        fc = encoder.fc
+        output_fc = model.head.fc
+        if not (
+            encoder.features_only is True
+            and isinstance(fc, torch.nn.Linear)
+            and (fc.in_features, fc.out_features) == (512, 6)
+            and fc.bias is not None
+            and isinstance(output_fc, torch.nn.Linear)
+            and (output_fc.in_features, output_fc.out_features) == (512, 6)
+        ):
+            raise ValueError("Legacy global head compatibility requires a features-only encoder and the unchanged 6-DoF output head.")
+
+        # Upstream global_encoder.py returns features before this fc is used.
+        # The released 2024 checkpoint retains a 12-output auxiliary head, while
+        # the current constructor creates 6. Restore its serialized shape rather
+        # than filtering mismatches like the upstream non-strict loader does.
+        encoder.fc = torch.nn.Linear(512, 12, device=fc.weight.device, dtype=fc.weight.dtype)
+        compatibility = {
+            "module": "global_encoder.fc",
+            "original_weight_shape": [6, 512],
+            "checkpoint_weight_shape": [12, 512],
+            "original_bias_shape": [6],
+            "checkpoint_bias_shape": [12],
+            "reason": "Unused auxiliary head; global_encoder.features_only=True.",
+            "final_output_dof": 6,
+        }
+
+    model.load_state_dict(state, strict=True)
+    return compatibility
+
+
 def main() -> None:
     args = parse_args()  # --help works before importing any optional dependency.
     args.repo = args.repo.resolve()
@@ -105,7 +148,9 @@ def main() -> None:
     if not isinstance(state, dict) or not state or not all(isinstance(v, torch.Tensor) for v in state.values()):
         raise ValueError("Expected an official tensor state_dict, directly or under the 'model' key.")
     torch.nn.modules.utils.consume_prefix_in_state_dict_if_present(state, "_orig_mod.")
-    model.load_state_dict(state, strict=True)  # No missing, unexpected, or shape-mismatched keys accepted.
+    checkpoint_compatibility = load_dualtrack_2024_state(model, state)
+    if checkpoint_compatibility is not None:
+        print("Restored unused legacy global encoder head (512 -> 12); final output remains 6-DoF.", flush=True)
     print(f"All checkpoint keys matched; predicting all {frame_count} frames on {device}.", flush=True)
     del checkpoint, state
     if device.type == "cuda":
@@ -159,6 +204,7 @@ def main() -> None:
         "checkpoint": str(args.checkpoint),
         "checkpoint_sha256": sha256(args.checkpoint),
         "checkpoint_loaded_strictly": True,
+        "checkpoint_compatibility": checkpoint_compatibility,
         "device": str(device),
         "device_name": torch.cuda.get_device_name() if device.type == "cuda" else "CPU",
         "torch_version": torch.__version__,

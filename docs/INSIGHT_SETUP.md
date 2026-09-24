@@ -264,6 +264,10 @@ CUDA_VISIBLE_DEVICES=0 python scripts/infer_one_sweep.py --input "$US_SWEEP" --c
 
 成功标志：输出 `All checkpoint keys matched`，随后保存三个文件。程序仅读图像、不读参考位姿。
 
+官方 2024 权重中的 `global_encoder.fc` 是旧的 12 维辅助头，当前上游构造器创建的是 6 维；融合推理使用 `features_only=True`，不会执行这个辅助头。脚本针对这一已知形状恢复辅助头后，仍以 `strict=True` 加载全部参数，并在 `metadata.json` 的 `checkpoint_compatibility` 中记录处理过程。真正的位姿输出头仍为 6 维，其余缺失或不匹配不会被忽略。若旧脚本报该层 `[12,512]` 对 `[6,512]` 不匹配，在项目目录执行 `git pull --ff-only` 后重跑原推理命令即可；不需要重装依赖或重新下载权重。
+
+开发验证：本地 Windows / Python 3.12 / PyTorch 2.7.1 CPU 已使用真实官方权重验证 854 项严格加载且值一致，并用 32 帧合成输入完成全模型前向，输出 `(1,31,6)` 且数值有限。这不替代学校 GPU 上的真实扫查测试。安装推理依赖后，可用 `python -m unittest discover -s tests -v` 运行权重兼容回归检查。
+
 ```bash
 python -c "import numpy as np; p=np.load('results/first_sweep/poses.npy'); print('shape:', p.shape); print('finite:', np.isfinite(p).all()); print('first pose:', p[0])"
 ```
@@ -319,7 +323,8 @@ Git 只同步已提交的内容，不会实时双向同步。若 `pull --ff-only
 | `No module named 'dotenv'` | 保持 `.venv` 激活，`git pull --ff-only` 后重跑 `python -m pip install -r requirements-inference.txt`；依赖已补入 |
 | imports OK 失败 | 保留完整 traceback；先解决依赖，不继续下载/跑数据 |
 | `curl: (18)` / ZIP 找不到中央目录 | 验证集未下载完整；保留 ZIP，重新执行第 8 步验证集续传整段，不重下已完成的权重 |
-| checkpoint keys 不匹配 | 确认子模块提交及 2024 权重，保留严格检查 |
+| 仅 `global_encoder.fc` 的 12/6 维不匹配 | 旧辅助头兼容问题；`git pull --ff-only` 更新启动脚本后重跑，仍严格加载全部权重 |
+| 其他 checkpoint keys 不匹配 | 确认子模块提交及 2024 权重，保留严格检查 |
 | `weights_only` 加载失败 | 保留报错；先核对官方 checkpoint 格式，不自动关闭安全加载 |
 | CUDA out of memory | 换空闲卡或更短的完整扫描；两卡显存不会自动合并 |
 | 进程被 Killed 而非 CUDA OOM | 检查 `free -h` 的 WSL 内存；调整主机 WSL 内存分配需另行处理 |
