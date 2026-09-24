@@ -1,0 +1,2 @@
+# Optional offline HTML viewer; install after the inference environment.
+plotly==6.3.0

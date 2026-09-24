@@ -2,7 +2,7 @@
 
 本指南按学校机器是 Windows + WSL2 Ubuntu、两张 RTX 2080 Ti 编写。以下每一步都标明在哪台电脑、哪个终端操作；如果学校机器其实是原生 Linux，可跳过 WSL 检查。
 
-当前状态（2026-09-24，依据学校终端输出）：CUDA 矩阵运算通过，识别到两张 2080 Ti；`DualTrack imports OK`；验证 ZIP 完整性检查与解压通过，扫描列表最短为 318 帧。尚未完成真实模型推理。**单卡 2080 Ti 有 11 GB 显存，可作为首轮测试配置；两卡不会自动变成 22 GB。**最终能否处理所选完整序列，须实际检查可用显存。
+当前状态（2026-09-24，依据学校终端输出）：318 帧完整真实扫查已在学校 CUDA 上完成严格权重加载和推理，三个结果文件已保存。下一步见[结果检查与三维预览](FIRST_PREVIEW.md)。**单卡 2080 Ti 有 11 GB 显存；两卡不会自动变成 22 GB。**其他序列仍需按长度和可用显存测试。
 
 ## 每次开机后的快捷操作
 
@@ -190,7 +190,7 @@ python -m pip install -r requirements-inference.txt
 python -m pip check
 ```
 
-这里固定 cu126 作为首测组合，前提是学校 Windows NVIDIA 驱动兼容。它是 PyTorch 官方发布组合；尚未在你的学校电脑实跑。若报告驱动过旧，先处理 Windows 驱动，或按实际版本选择官方支持的其他 CUDA wheel，不要在 WSL 乱装驱动。[PyTorch 安装矩阵](https://pytorch.org/get-started/previous-versions/#v271)
+这里固定 cu126 作为首测组合，前提是学校 Windows NVIDIA 驱动兼容。学校已按本流程报告 CUDA 检查及首条推理成功，具体运行版本记录在结果 `metadata.json`。其他机器若报告驱动过旧，先处理 Windows 驱动，或按实际版本选择官方支持的其他 CUDA wheel，不要在 WSL 乱装驱动。[PyTorch 安装矩阵](https://pytorch.org/get-started/previous-versions/#v271)
 
 ## 7. 远程 Ubuntu：做 GPU 运算检查
 

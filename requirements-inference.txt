@@ -1,6 +1,7 @@
 # Candidate inference-only environment, based on the upstream versions.
 # Install torch==2.7.1 and torchvision==0.22.1 from the appropriate official
-# CUDA wheel index first. This subset has NOT been executed on a GPU yet.
+# CUDA wheel index first. One 318-frame CUDA inference has now been reported
+# successful on the school machine; metadata.json records actual runtime versions.
 # Training, notebooks, Pillow_SIMD, and unrelated model backbones are omitted.
 numpy==2.2.2
 h5py==3.13.0
