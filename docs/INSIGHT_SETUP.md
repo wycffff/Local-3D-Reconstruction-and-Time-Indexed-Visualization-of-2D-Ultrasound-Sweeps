@@ -171,12 +171,34 @@ PYTHONPATH=external/DualTrack python -c "from src.models import get_model; print
 ```bash
 mkdir -p checkpoints data results
 curl -fL --retry 3 https://downloads.imfusion.com/DualTrack/dualtrack_final.pt -o checkpoints/dualtrack_final.pt
-curl -fL --retry 3 -C - 'https://zenodo.org/records/12979481/files/Freehand_US_data_val.zip?download=1' -o data/Freehand_US_data_val.zip
-unzip data/Freehand_US_data_val.zip -d data/tus_rec_2024_val
+```
+
+权重下载完成后，单独执行下面整段。验证集下载中断时保留 ZIP，重新执行这段即可续传，不需要重新下载权重。每次失败后重新启动 `curl -C -`，按文件最新大小续传；全部尝试失败时停止，不会继续解压。
+
+```bash
+(
+  for attempt in {1..10}; do
+    if curl -fL --retry 3 --connect-timeout 30 -C - \
+      'https://zenodo.org/records/12979481/files/Freehand_US_data_val.zip?download=1' \
+      -o data/Freehand_US_data_val.zip; then
+      exit 0
+    fi
+    if [ "$attempt" -lt 10 ]; then
+      printf 'Download interrupted; resume in 15 seconds (%s/10).\n' "$attempt"
+      sleep 15
+    fi
+  done
+  printf 'Download failed. Keep the partial ZIP and retry later.\n' >&2
+  exit 1
+) &&
+unzip -tq data/Freehand_US_data_val.zip &&
+unzip -n data/Freehand_US_data_val.zip -d data/tus_rec_2024_val &&
 python scripts/list_sweeps.py data/tus_rec_2024_val
 ```
 
 权重约 408 MB，验证 ZIP 约 4.8 GB，整个安装/解压建议预留 25 GB 空间。下载较慢或 HTTP 429 时保留已有部分，稍后恢复，不反复发起并行下载；也可从 [官方数据页面](https://zenodo.org/records/12979481) 手动下载。
+
+`curl: (18)` 表示传输未完成，此时 `End-of-central-directory signature not found` 是解压不完整 ZIP 的后续报错。普通 `--retry` 不涵盖错误 18；上面的外层循环会重新发起续传。使用 `-o` 写入文件，不改为 `>` 或 `>>`。下载成功后先用 `unzip -tq` 检查完整性，检查通过才解压和列出扫描。[curl 官方说明](https://curl.se/docs/manpage.html#--continue-at)
 
 成功标志：列出若干 `N frames /完整路径/某个扫描.h5`。脚本只选图像形状正确、2–1024 帧的完整原始扫查，跳过 landmark 文件；这一限制用于首轮启动脚本，不代表对所有版本/策略的普遍结论。
 
@@ -254,6 +276,7 @@ Git 只同步已提交的内容，不会实时双向同步。若 `pull --ff-only
 | PyTorch CUDA 为 False | `which python`、wheel 是否 CUDA 版、驱动是否兼容 |
 | `No module named 'dotenv'` | 保持 `.venv` 激活，`git pull --ff-only` 后重跑 `python -m pip install -r requirements-inference.txt`；依赖已补入 |
 | imports OK 失败 | 保留完整 traceback；先解决依赖，不继续下载/跑数据 |
+| `curl: (18)` / ZIP 找不到中央目录 | 验证集未下载完整；保留 ZIP，重新执行第 8 步验证集续传整段，不重下已完成的权重 |
 | checkpoint keys 不匹配 | 确认子模块提交及 2024 权重，保留严格检查 |
 | `weights_only` 加载失败 | 保留报错；先核对官方 checkpoint 格式，不自动关闭安全加载 |
 | CUDA out of memory | 换空闲卡或更短的完整扫描；两卡显存不会自动合并 |
