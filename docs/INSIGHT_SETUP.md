@@ -252,6 +252,7 @@ Git 只同步已提交的内容，不会实时双向同步。若 `pull --ff-only
 | 连接后是 PowerShell | 学校端是否启动了 Windows CLI；改用 Ubuntu 的 Linux CLI 全路径 |
 | Windows 看得到 GPU，WSL 看不到 | WSL 版本/更新、Windows NVIDIA 驱动；不要在 WSL 装显示驱动 |
 | PyTorch CUDA 为 False | `which python`、wheel 是否 CUDA 版、驱动是否兼容 |
+| `No module named 'dotenv'` | 保持 `.venv` 激活，`git pull --ff-only` 后重跑 `python -m pip install -r requirements-inference.txt`；依赖已补入 |
 | imports OK 失败 | 保留完整 traceback；先解决依赖，不继续下载/跑数据 |
 | checkpoint keys 不匹配 | 确认子模块提交及 2024 权重，保留严格检查 |
 | `weights_only` 加载失败 | 保留报错；先核对官方 checkpoint 格式，不自动关闭安全加载 |
