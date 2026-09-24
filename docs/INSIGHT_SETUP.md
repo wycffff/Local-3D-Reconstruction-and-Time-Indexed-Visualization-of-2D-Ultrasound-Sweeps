@@ -2,7 +2,49 @@
 
 本指南按学校机器是 Windows + WSL2 Ubuntu、两张 RTX 2080 Ti 编写。以下每一步都标明在哪台电脑、哪个终端操作；如果学校机器其实是原生 Linux，可跳过 WSL 检查。
 
-当前状态：本仓库已准备脚本，但尚未连接学校机器，也尚未在那里执行模型。**单卡 2080 Ti 有 11 GB 显存，可作为首轮测试配置；两卡不会自动变成 22 GB。**最终能否处理所选完整序列，须实际检查可用显存。
+当前状态（2026-09-24，依据学校终端输出）：CUDA 矩阵运算通过，识别到两张 2080 Ti；`DualTrack imports OK`；验证 ZIP 完整性检查与解压通过，扫描列表最短为 318 帧。尚未完成真实模型推理。**单卡 2080 Ti 有 11 GB 显存，可作为首轮测试配置；两卡不会自动变成 22 GB。**最终能否处理所选完整序列，须实际检查可用显存。
+
+## 每次开机后的快捷操作
+
+目前使用手动启动方式。学校电脑开机并登录 Windows 后，打开 Ubuntu，运行：
+
+```bash
+"$HOME/.local/share/vscode-cli/code" tunnel --name insight-ultrasound
+```
+
+保留这个终端运行；通常不需要重新登录 GitHub。自己电脑 VS Code 用 `Remote Tunnels: Connect to Tunnel` 连接 `insight-ultrasound`，打开 `/home/yechuanwei/projects/ultrasound-sweeps`，再新建一个远程终端：
+
+```bash
+cd ~/projects/ultrasound-sweeps
+source .venv/bin/activate
+nvidia-smi
+```
+
+隧道进程仍在运行时，不需要重复启动。新建 Python 工作终端时重新激活 `.venv`；不用重新安装依赖或下载数据。后续协助本项目启动/继续测试时，应同时提醒上面的隧道启动命令。
+
+VS Code 支持 `code tunnel service install`，但 WSL 内的服务并不等于 Windows 开机后已自动启动 Ubuntu；自动启动需另外配置。目前继续使用以上手动方式。[官方隧道说明](https://code.visualstudio.com/docs/remote/tunnels)
+
+## 项目在 Windows 哪里，是否要换盘
+
+2026-09-24：用户确认磁盘剩余约 105 GB，当前决定保留项目位置，空间不足时再考虑迁移。
+
+项目位于 WSL 的 `/home/yechuanwei/projects/ultrasound-sweeps`。在学校电脑本机 Ubuntu 中运行下面命令，可在学校 Windows 资源管理器中打开同一目录：
+
+```bash
+cd ~/projects/ultrasound-sweeps
+explorer.exe .
+```
+
+也可在学校 Windows 资源管理器地址栏输入 `\\wsl.localhost\`，选择实际 Ubuntu 发行版，进入 `home\yechuanwei\projects\ultrasound-sweeps`。这不是另一份副本。WSL2 的 Linux 文件通常保存在 `ext4.vhdx` 虚拟磁盘中，Windows 物理位置取决于安装方式，不能仅凭 Linux 路径认定在 C 盘。[WSL 文件访问](https://learn.microsoft.com/en-us/windows/wsl/filesystems)、[WSL 磁盘说明](https://learn.microsoft.com/en-us/windows/wsl/disk-space)
+
+查看项目用量和 Windows 各盘剩余空间：
+
+```bash
+du -sh ~/projects/ultrasound-sweeps
+df -h /mnt/c /mnt/d /mnt/e
+```
+
+`du` 不包含项目外的 Python、下载缓存和整个 Ubuntu；`df` 看 `Avail` 列。若空间充足，先完成第 9 步推理，不必为了首次测试迁移。长期扩充数据时，可以把整个 WSL 发行版迁到 D/E 盘，保持 `/home/...` 路径和现有虚拟环境。不要直接拖动 `ext4.vhdx`，也不建议把带 `.venv` 的工程直接搬到 `/mnt/d`；Linux 工具通常在 WSL 文件系统内运行更快。迁移安排在模型和隧道停止后，另按实际发行版名、WSL 版本和目标盘类型操作。
 
 ## 0. 两条连接分别做什么
 
