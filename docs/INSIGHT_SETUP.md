@@ -1,18 +1,18 @@
-# INSIGHT 双 2080 Ti：连接、同步、首次推理
+# INSIGHT dual RTX 2080 Ti: connection, synchronization, and first inference
 
-本指南按学校机器是 Windows + WSL2 Ubuntu、两张 RTX 2080 Ti 编写。以下每一步都标明在哪台电脑、哪个终端操作；如果学校机器其实是原生 Linux，可跳过 WSL 检查。
+This guide assumes that the school workstation runs Windows with Ubuntu under WSL2 and has two RTX 2080 Ti GPUs. Each step identifies the computer and terminal to use. For a native Linux workstation, skip the WSL-specific checks.
 
-当前状态（2026-09-24，依据学校终端输出）：318 帧完整真实扫查已在学校 CUDA 上完成严格权重加载和推理，三个结果文件已保存。下一步见[结果检查与三维预览](FIRST_PREVIEW.md)。**单卡 2080 Ti 有 11 GB 显存；两卡不会自动变成 22 GB。**其他序列仍需按长度和可用显存测试。
+Status as of 2026-09-25: a complete 318-frame scan has finished CUDA inference with strict checkpoint loading, saved all three output files, and opened in the interactive preview. Continue with [result inspection and the updated 3D preview](FIRST_PREVIEW.md), then [accuracy evaluation](NEXT_STEPS.md). **Each 2080 Ti has 11 GB of VRAM; two cards do not automatically provide 22 GB to one inference run.** Test other sequences according to their length and available memory.
 
-## 每次开机后的快捷操作
+## Quick start after each boot
 
-目前使用手动启动方式。学校电脑开机并登录 Windows 后，打开 Ubuntu，运行：
+The current setup starts the tunnel manually. After booting the school workstation and signing in to Windows, open Ubuntu and run:
 
 ```bash
 "$HOME/.local/share/vscode-cli/code" tunnel --name insight-ultrasound
 ```
 
-保留这个终端运行；通常不需要重新登录 GitHub。自己电脑 VS Code 用 `Remote Tunnels: Connect to Tunnel` 连接 `insight-ultrasound`，打开 `/home/yechuanwei/projects/ultrasound-sweeps`，再新建一个远程终端：
+Keep that terminal running. GitHub sign-in usually does not need to be repeated. On your own computer, use VS Code's `Remote Tunnels: Connect to Tunnel` action to connect to `insight-ultrasound`, open `/home/yechuanwei/projects/ultrasound-sweeps`, and create a remote terminal:
 
 ```bash
 cd ~/projects/ultrasound-sweeps
@@ -20,65 +20,65 @@ source .venv/bin/activate
 nvidia-smi
 ```
 
-隧道进程仍在运行时，不需要重复启动。新建 Python 工作终端时重新激活 `.venv`；不用重新安装依赖或下载数据。后续协助本项目启动/继续测试时，应同时提醒上面的隧道启动命令。
+Do not start another tunnel if its process is still running. Activate `.venv` in each new Python terminal; dependencies and data do not need to be installed or downloaded again. When providing instructions for starting or resuming this project, include the tunnel command above.
 
-VS Code 支持 `code tunnel service install`，但 WSL 内的服务并不等于 Windows 开机后已自动启动 Ubuntu；自动启动需另外配置。目前继续使用以上手动方式。[官方隧道说明](https://code.visualstudio.com/docs/remote/tunnels)
+VS Code supports `code tunnel service install`, but installing a service inside WSL does not by itself start Ubuntu when Windows boots. Automatic startup needs separate configuration. Continue with the manual process for now. [Official tunnel documentation](https://code.visualstudio.com/docs/remote/tunnels)
 
-## 项目在 Windows 哪里，是否要换盘
+## Where the project lives and whether to move it
 
-2026-09-24：用户确认磁盘剩余约 105 GB，当前决定保留项目位置，空间不足时再考虑迁移。
+On 2026-09-24, the user confirmed approximately 105 GB of free disk space and chose to keep the current location until more space is needed.
 
-项目位于 WSL 的 `/home/yechuanwei/projects/ultrasound-sweeps`。在学校电脑本机 Ubuntu 中运行下面命令，可在学校 Windows 资源管理器中打开同一目录：
+The project is at `/home/yechuanwei/projects/ultrasound-sweeps` inside WSL. Run the following in Ubuntu on the school workstation to open the same directory in Windows File Explorer:
 
 ```bash
 cd ~/projects/ultrasound-sweeps
 explorer.exe .
 ```
 
-也可在学校 Windows 资源管理器地址栏输入 `\\wsl.localhost\`，选择实际 Ubuntu 发行版，进入 `home\yechuanwei\projects\ultrasound-sweeps`。这不是另一份副本。WSL2 的 Linux 文件通常保存在 `ext4.vhdx` 虚拟磁盘中，Windows 物理位置取决于安装方式，不能仅凭 Linux 路径认定在 C 盘。[WSL 文件访问](https://learn.microsoft.com/en-us/windows/wsl/filesystems)、[WSL 磁盘说明](https://learn.microsoft.com/en-us/windows/wsl/disk-space)
+Alternatively, enter `\\wsl.localhost\` in the school's Windows File Explorer address bar, select the actual Ubuntu distribution, and open `home\yechuanwei\projects\ultrasound-sweeps`. This is the same directory, not another copy. WSL2 Linux files are normally stored in an `ext4.vhdx` virtual disk. Its Windows location depends on how the distribution was installed; the Linux path alone does not establish that it is on drive C. See [WSL file access](https://learn.microsoft.com/en-us/windows/wsl/filesystems) and [WSL disk space](https://learn.microsoft.com/en-us/windows/wsl/disk-space).
 
-查看项目用量和 Windows 各盘剩余空间：
+Check project size and free space on the Windows drives:
 
 ```bash
 du -sh ~/projects/ultrasound-sweeps
 df -h /mnt/c /mnt/d /mnt/e
 ```
 
-`du` 不包含项目外的 Python、下载缓存和整个 Ubuntu；`df` 看 `Avail` 列。若空间充足，先完成第 9 步推理，不必为了首次测试迁移。长期扩充数据时，可以把整个 WSL 发行版迁到 D/E 盘，保持 `/home/...` 路径和现有虚拟环境。不要直接拖动 `ext4.vhdx`，也不建议把带 `.venv` 的工程直接搬到 `/mnt/d`；Linux 工具通常在 WSL 文件系统内运行更快。迁移安排在模型和隧道停止后，另按实际发行版名、WSL 版本和目标盘类型操作。
+The `du` result excludes Python installations, download caches, and other Ubuntu files outside the project. In `df`, inspect the `Avail` column. With sufficient space, continue testing without moving the project. If the dataset grows, moving the whole WSL distribution to D or E can preserve the existing `/home/...` paths and virtual environment. Do not drag `ext4.vhdx` manually. Moving a project with its `.venv` directly to `/mnt/d` is also not recommended; Linux tools generally work faster inside the WSL filesystem. Plan any migration separately, after stopping inference and the tunnel, using the actual distribution name, WSL version, and destination drive.
 
-## 0. 两条连接分别做什么
+## 0. What the two connections do
 
-| 通道 | 作用 |
+| Connection | Purpose |
 |---|---|
-| 自己电脑 VS Code → 隧道 → 学校 WSL | 编辑学校文件、在学校运行 Python 和 GPU |
-| 自己电脑 Git ↔ GitHub ↔ 学校 Git | 手动 push/pull 同步代码与说明 |
+| Your VS Code → tunnel → school WSL | Edit school files and run Python/GPU tasks on the school workstation |
+| Your Git ↔ GitHub ↔ school Git | Synchronize committed code and documentation with explicit push/pull operations |
 
-隧道窗口里按保存，文件已经保存在学校机器。它不会同时更新自己电脑的另一份本地工作目录；要更新那一份，先在学校 commit/push，再在本地 pull。
+Saving in the remote VS Code window writes directly to the school machine. It does not update a separate checkout on your own computer. To update that checkout, commit and push from the school machine, then pull locally.
 
-先把学校主机插电睡眠设为“从不”，让下面的隧道终端持续运行。初期不设置后台服务。屏幕可以锁定；关机、休眠、注销 Windows 会话、关闭隧道进程或 `wsl --shutdown` 都可能中断连接。
+Set the school workstation's sleep behavior while plugged in to **Never**, and keep the tunnel terminal running. No background service is configured initially. The screen can be locked, but shutdown, hibernation, signing out of Windows, closing the tunnel process, or running `wsl --shutdown` may interrupt the connection.
 
-## 1. 学校电脑 / Windows PowerShell：确认 WSL 与显卡
+## 1. School workstation / Windows PowerShell: check WSL and GPUs
 
 ```powershell
 wsl --list --verbose
 nvidia-smi
 ```
 
-成功标志：Ubuntu 那一行 VERSION 为 `2`；`nvidia-smi` 显示两张 2080 Ti。CUDA Version 是驱动支持能力的显示，不代表已安装完整 CUDA Toolkit。
+Expected: the Ubuntu distribution shows VERSION `2`, and `nvidia-smi` lists two 2080 Ti cards. Its CUDA Version field indicates driver compatibility, not an installed full CUDA Toolkit.
 
-若只出现 docker-desktop，说明还需安装工作用 Ubuntu。可在管理员 PowerShell 运行 `wsl --install -d Ubuntu-24.04`，完成提示中的重启和首次 Linux 用户创建。
+If only docker-desktop is listed, install an Ubuntu distribution for development. In administrator PowerShell, run `wsl --install -d Ubuntu-24.04`, then follow the restart and initial Linux user setup prompts.
 
-若 Ubuntu 是 VERSION 1，使用列表中的真实发行版名转换，例如：
+If Ubuntu shows VERSION 1, convert it using its actual name from the list, for example:
 
 ```powershell
 wsl --set-version Ubuntu-24.04 2
 ```
 
-需要更新 WSL 时运行 `wsl --update`。转换或更新操作在设置阶段完成，不要在模型运行中做。
+Use `wsl --update` if an update is needed. Perform conversion or updates during setup, not while inference is running.
 
-打开 Windows 开始菜单里的 Ubuntu。也可运行 `wsl -d Ubuntu-24.04`，其中发行版名换成列表中实际名称。
+Open Ubuntu from the Windows Start menu. Alternatively, run `wsl -d Ubuntu-24.04`, replacing the distribution name with the actual name in the list.
 
-## 2. 学校电脑 / Ubuntu：确认 Linux 能看到 GPU
+## 2. School workstation / Ubuntu: check GPU access from Linux
 
 ```bash
 uname -r
@@ -87,17 +87,17 @@ printf '%s\n' "$WSL_DISTRO_NAME"
 nvidia-smi
 ```
 
-成功标志：内核包含 `microsoft` / `WSL2`，架构是 `x86_64`，发行版为 Ubuntu，且能看到显卡。
+Expected: the kernel name includes `microsoft` or `WSL2`, the architecture is `x86_64`, the distribution is Ubuntu, and the GPUs are visible.
 
-如果仅提示 `nvidia-smi: command not found`，试：
+If the only error is `nvidia-smi: command not found`, try:
 
 ```bash
 /usr/lib/wsl/lib/nvidia-smi
 ```
 
-Windows 正常而 WSL GPU 检查失败时，先检查 WSL2、WSL 更新及 Windows NVIDIA 驱动。**不要在 WSL 安装 Linux NVIDIA 显示驱动**；WSL 使用 Windows 驱动。此项目的预编译 PyTorch 推理通常也不需要另装完整 CUDA Toolkit。[NVIDIA 官方 WSL 指南](https://docs.nvidia.com/cuda/wsl-user-guide/index.html)
+If GPU access works in Windows but fails in WSL, check WSL2, WSL updates, and the Windows NVIDIA driver. **Do not install a Linux NVIDIA display driver inside WSL.** WSL uses the Windows driver. Inference with this project's prebuilt PyTorch package also normally does not require a separate full CUDA Toolkit. [NVIDIA WSL guide](https://docs.nvidia.com/cuda/wsl-user-guide/index.html)
 
-## 3. 学校电脑 / Ubuntu：启动 Linux 版 VS Code 隧道
+## 3. School workstation / Ubuntu: start the Linux VS Code tunnel
 
 ```bash
 sudo apt-get update
@@ -109,33 +109,33 @@ tar -xzf vscode-cli.tar.gz
 ./code --version
 ```
 
-成功标志：显示 VS Code CLI 的版本。这里专门下载 Linux CLI；WSL 中直接敲裸 `code` 可能调用 Windows 的 VS Code 启动脚本，连接到不同环境。
+Expected: the VS Code CLI version is printed. This explicitly installs the Linux CLI. A bare `code` command in WSL may invoke the Windows VS Code launcher and connect to a different environment.
 
-然后登录：
+Sign in:
 
 ```bash
 "$HOME/.local/share/vscode-cli/code" tunnel user login --provider github
 ```
 
-按终端给出的网页和设备验证码登录 GitHub `wycffff`。验证码由你自己输入登录网页。隧道登录与稍后的 Git 推送认证是两回事。
+Open the URL shown in the terminal and enter its device code to sign in to GitHub as `wycffff`. Enter the code yourself on the sign-in page. Tunnel authentication is separate from the Git push authentication configured later.
 
-启动隧道：
+Start the tunnel:
 
 ```bash
 "$HOME/.local/share/vscode-cli/code" tunnel --name insight-ultrasound
 ```
 
-首次按提示阅读、接受服务器许可。成功后应输出类似 `https://vscode.dev/tunnel/insight-ultrasound` 的链接。**终端持续运行、没有回到命令提示符是正常现象。保留这个终端。**
+On the first run, read and accept the server license when prompted. A successful connection should print a URL such as `https://vscode.dev/tunnel/insight-ultrasound`. **It is normal for the process to stay running without returning to a command prompt. Keep this terminal open.**
 
-## 4. 自己电脑 / VS Code：连接学校机器
+## 4. Your computer / VS Code: connect to the school workstation
 
-1. 先用浏览器打开上一步终端输出的链接，登录同一个 GitHub `wycffff`；能打开远程编辑器即证明隧道可用。
-2. 自己电脑的桌面 VS Code 按 `Ctrl+Shift+X`，安装微软 **Remote - Tunnels**，扩展 ID `ms-vscode.remote-server`。
-3. 按 `Ctrl+Shift+P`，运行 `Remote Tunnels: Connect to Tunnel`。
-4. 按提示用同一个 GitHub 登录，选择 `insight-ultrasound`。
-5. 在打开的远程窗口中，点 Terminal → New Terminal。
+1. First open the URL printed by the tunnel in a browser and sign in with the same GitHub account, `wycffff`. If the remote editor opens, the tunnel works.
+2. In desktop VS Code on your own computer, press `Ctrl+Shift+X` and install Microsoft's **Remote - Tunnels** extension, ID `ms-vscode.remote-server`.
+3. Press `Ctrl+Shift+P` and run `Remote Tunnels: Connect to Tunnel`.
+4. Sign in with the same GitHub account and select `insight-ultrasound`.
+5. In the remote window, select **Terminal → New Terminal**.
 
-在这个远程终端运行：
+Run these commands in that remote terminal:
 
 ```bash
 uname -r
@@ -144,11 +144,11 @@ pwd
 nvidia-smi
 ```
 
-成功标志：是学校的 Linux / WSL 环境并显示 2080 Ti，而不是自己电脑的 PowerShell。若远程终端是 Windows，检查学校端是否确实从 Ubuntu 用 Linux CLI 全路径启动。
+Expected: the school's Linux/WSL environment and 2080 Ti GPUs, rather than your own computer's PowerShell. If the remote terminal runs Windows, check that the tunnel was started in Ubuntu using the full path to the Linux CLI.
 
-后续 Ubuntu 命令都可以在此远程终端完成。VS Code 隧道不需要先配置 SSH 或路由器端口转发。[微软 Remote Tunnels 文档](https://code.visualstudio.com/docs/remote/tunnels)
+All subsequent Ubuntu commands can run in this remote terminal. VS Code tunnels do not require separate SSH configuration or router port forwarding. [Microsoft Remote Tunnels documentation](https://code.visualstudio.com/docs/remote/tunnels)
 
-## 5. 远程 Ubuntu：克隆项目和固定的上游代码
+## 5. Remote Ubuntu: clone the project and pinned upstream source
 
 ```bash
 mkdir -p "$HOME/projects"
@@ -159,15 +159,15 @@ git status
 git submodule status
 ```
 
-成功标志：工作区干净；DualTrack 子模块提交以 `b904a3d` 开头。子模块状态开头若是 `-`，执行 `git submodule update --init --recursive`。
+Expected: a clean working tree and a DualTrack submodule commit beginning with `b904a3d`. If the submodule status starts with `-`, run `git submodule update --init --recursive`.
 
-项目放在 `/home/<Linux用户名>/projects/ultrasound-sweeps`，使用 WSL Linux 文件系统。
+Keep the project in `/home/<linux-user>/projects/ultrasound-sweeps`, within the WSL Linux filesystem.
 
-在 VS Code 点 File → Open Folder，打开上述路径。可以先在终端运行 `pwd` 复制实际路径。重新开终端后应落在项目目录；无需在远程终端另运行 `code .`。
+In VS Code, select **File → Open Folder** and open that path. Run `pwd` first if needed to copy the exact path. New terminals should then open in the project directory; there is no need to run `code .` in the remote terminal.
 
-## 6. 远程 Ubuntu：创建 Python 3.11 独立环境
+## 6. Remote Ubuntu: create an isolated Python 3.11 environment
 
-使用 uv 下载独立 Python，避免不同 Ubuntu 版本默认 Python 的差异；不修改系统 Python。
+Use uv to install a standalone Python version, avoiding differences between Ubuntu's default Python versions without changing the system interpreter.
 
 ```bash
 curl -LsSf https://astral.sh/uv/install.sh -o /tmp/ultrasound-uv-install.sh
@@ -180,9 +180,9 @@ python --version
 which python
 ```
 
-成功标志：Python 3.11.x，路径指向本项目 `.venv/bin/python`。以后新开终端都重新 `source .venv/bin/activate`。
+Expected: Python 3.11.x and a path ending in this project's `.venv/bin/python`. Activate the environment with `source .venv/bin/activate` in each new terminal.
 
-安装与上游版本对应的 PyTorch：
+Install the PyTorch versions used by the upstream project:
 
 ```bash
 python -m pip install torch==2.7.1 torchvision==0.22.1 --index-url https://download.pytorch.org/whl/cu126
@@ -190,32 +190,32 @@ python -m pip install -r requirements-inference.txt
 python -m pip check
 ```
 
-这里固定 cu126 作为首测组合，前提是学校 Windows NVIDIA 驱动兼容。学校已按本流程报告 CUDA 检查及首条推理成功，具体运行版本记录在结果 `metadata.json`。其他机器若报告驱动过旧，先处理 Windows 驱动，或按实际版本选择官方支持的其他 CUDA wheel，不要在 WSL 乱装驱动。[PyTorch 安装矩阵](https://pytorch.org/get-started/previous-versions/#v271)
+This first-run setup uses cu126 and requires a compatible Windows NVIDIA driver. The school workstation has passed both the CUDA check and the first inference run with this procedure; actual runtime versions are recorded in the result's `metadata.json`. If another machine reports an outdated driver, address its Windows driver or choose an officially supported CUDA wheel for that driver. Do not install arbitrary Linux display drivers in WSL. [PyTorch installation matrix](https://pytorch.org/get-started/previous-versions/#v271)
 
-## 7. 远程 Ubuntu：做 GPU 运算检查
+## 7. Remote Ubuntu: test a GPU computation
 
 ```bash
 python scripts/check_gpu.py --output results/environment.json
 ```
 
-成功标志：`cuda_available` 为 true，`cuda_ready` 为 true，`cuda_test_value` 为 64.0，并列出显卡。
+Expected: `cuda_available: true`, `cuda_ready: true`, `cuda_test_value: 64.0`, and a list of GPUs.
 
-如需确认模型依赖能导入：
+Check that model dependencies can be imported:
 
 ```bash
 PYTHONPATH=external/DualTrack python -c "from src.models import get_model; print('DualTrack imports OK')"
 ```
 
-这仍然只是依赖检查；接下来才验证真实权重与真实图像推理。
+This checks dependencies only. The following steps test the real checkpoint and real ultrasound images.
 
-## 8. 远程 Ubuntu：下载作者权重和验证集
+## 8. Remote Ubuntu: download the checkpoint and validation data
 
 ```bash
 mkdir -p checkpoints data results
 curl -fL --retry 3 https://downloads.imfusion.com/DualTrack/dualtrack_final.pt -o checkpoints/dualtrack_final.pt
 ```
 
-权重下载完成后，单独执行下面整段。验证集下载中断时保留 ZIP，重新执行这段即可续传，不需要重新下载权重。每次失败后重新启动 `curl -C -`，按文件最新大小续传；全部尝试失败时停止，不会继续解压。
+After the checkpoint download finishes, run the entire block below separately. If the validation download is interrupted, keep the partial ZIP and rerun this block to resume; the checkpoint does not need to be downloaded again. Each failed attempt restarts `curl -C -` using the latest file size. If all attempts fail, extraction does not proceed.
 
 ```bash
 (
@@ -238,21 +238,21 @@ unzip -n data/Freehand_US_data_val.zip -d data/tus_rec_2024_val &&
 python scripts/list_sweeps.py data/tus_rec_2024_val
 ```
 
-权重约 408 MB，验证 ZIP 约 4.8 GB，整个安装/解压建议预留 25 GB 空间。下载较慢或 HTTP 429 时保留已有部分，稍后恢复，不反复发起并行下载；也可从 [官方数据页面](https://zenodo.org/records/12979481) 手动下载。
+The checkpoint is approximately 408 MB and the validation ZIP is approximately 4.8 GB. Allow about 25 GB for installation and extraction. If the download is slow or returns HTTP 429, preserve the partial file and resume later rather than repeatedly starting parallel downloads. A manual download from the [official dataset page](https://zenodo.org/records/12979481) is another option.
 
-`curl: (18)` 表示传输未完成，此时 `End-of-central-directory signature not found` 是解压不完整 ZIP 的后续报错。普通 `--retry` 不涵盖错误 18；上面的外层循环会重新发起续传。使用 `-o` 写入文件，不改为 `>` 或 `>>`。下载成功后先用 `unzip -tq` 检查完整性，检查通过才解压和列出扫描。[curl 官方说明](https://curl.se/docs/manpage.html#--continue-at)
+`curl: (18)` means the transfer was incomplete. In that situation, `End-of-central-directory signature not found` is a subsequent error caused by attempting to extract an incomplete ZIP. The ordinary `--retry` behavior does not cover error 18; the outer loop above starts a fresh resume attempt. Use `-o` to write the file rather than replacing it with `>` or `>>`. After downloading, `unzip -tq` checks integrity; extraction and scan listing run only if that check passes. [curl documentation](https://curl.se/docs/manpage.html#--continue-at)
 
-成功标志：列出若干 `N frames /完整路径/某个扫描.h5`。脚本只选图像形状正确、2–1024 帧的完整原始扫查，跳过 landmark 文件；这一限制用于首轮启动脚本，不代表对所有版本/策略的普遍结论。
+Expected: entries such as `N frames /absolute/path/to/scan.h5`. The script selects complete original scans with the required image shape and 2–1024 frames, skipping landmark files. This limit belongs to the initial inference script, not to every model version or inference strategy.
 
-## 9. 远程 Ubuntu：选择一张卡跑第一次真实推理
+## 9. Remote Ubuntu: run the first real inference on one GPU
 
-先查看显卡使用情况：
+Check current GPU use:
 
 ```bash
 nvidia-smi
 ```
 
-选一张可用显存较多的卡，下面以 GPU 0 为例。保持序列完整，启动脚本从符合条件的扫描中选帧数最少的一条，降低首轮显存压力：
+Choose a GPU with sufficient free memory. The example below uses GPU 0. The scan selector chooses the shortest supported complete scan to reduce memory pressure while preserving the original sequence:
 
 ```bash
 US_SWEEP="$(python scripts/list_sweeps.py data/tus_rec_2024_val --first)"
@@ -260,25 +260,25 @@ printf '%s\n' "$US_SWEEP"
 CUDA_VISIBLE_DEVICES=0 python scripts/infer_one_sweep.py --input "$US_SWEEP" --checkpoint checkpoints/dualtrack_final.pt --output-dir results/first_sweep
 ```
 
-需要用另一张卡时，把 `CUDA_VISIBLE_DEVICES=0` 改为 `1`。脚本内仍称它为逻辑 `cuda:0`，这属于正常映射，不表示选错卡。
+To use the other GPU, change `CUDA_VISIBLE_DEVICES=0` to `1`. Inside the process, it is still called logical device `cuda:0`; this is the expected remapping.
 
-成功标志：输出 `All checkpoint keys matched`，随后保存三个文件。程序仅读图像、不读参考位姿。
+Expected: `All checkpoint keys matched`, followed by confirmation that three files were saved. Inference reads images only, without reference poses.
 
-官方 2024 权重中的 `global_encoder.fc` 是旧的 12 维辅助头，当前上游构造器创建的是 6 维；融合推理使用 `features_only=True`，不会执行这个辅助头。脚本针对这一已知形状恢复辅助头后，仍以 `strict=True` 加载全部参数，并在 `metadata.json` 的 `checkpoint_compatibility` 中记录处理过程。真正的位姿输出头仍为 6 维，其余缺失或不匹配不会被忽略。若旧脚本报该层 `[12,512]` 对 `[6,512]` 不匹配，在项目目录执行 `git pull --ff-only` 后重跑原推理命令即可；不需要重装依赖或重新下载权重。
+The official 2024 checkpoint contains a legacy 12-output `global_encoder.fc` auxiliary head, while the current upstream constructor creates a 6-output head. Fusion inference uses `features_only=True` and does not execute that auxiliary head. For this known shape difference, the script restores the matching auxiliary head and still loads every parameter with `strict=True`. The change is recorded under `checkpoint_compatibility` in `metadata.json`. The actual pose-output head remains 6-dimensional; other missing or mismatched entries are not ignored. If an older script reports a `[12,512]` versus `[6,512]` mismatch for this layer, run `git pull --ff-only` in the project directory and repeat the inference command. Dependencies and the checkpoint do not need to be downloaded again.
 
-开发验证：本地 Windows / Python 3.12 / PyTorch 2.7.1 CPU 已使用真实官方权重验证 854 项严格加载且值一致，并用 32 帧合成输入完成全模型前向，输出 `(1,31,6)` 且数值有限。这不替代学校 GPU 上的真实扫查测试。安装推理依赖后，可用 `python -m unittest discover -s tests -v` 运行权重兼容回归检查。
+Development validation on Windows / Python 3.12 / PyTorch 2.7.1 CPU used the real official checkpoint to verify that all 854 entries loaded strictly and matched their supplied values. A full forward pass on 32 synthetic frames produced finite output with shape `(1,31,6)`. The school workstation subsequently completed the real 318-frame CUDA run. With inference dependencies installed, run `python -m unittest discover -s tests -v` for the available regression checks.
 
 ```bash
 python -c "import numpy as np; p=np.load('results/first_sweep/poses.npy'); print('shape:', p.shape); print('finite:', np.isfinite(p).all()); print('first pose:', p[0])"
 ```
 
-预期 `shape` 是 `(帧数, 4, 4)`，`finite` 为 True，首帧为单位矩阵。`relative_motion.npy` 是相邻帧运动，`metadata.json` 记录权重校验值、版本、耗时等。
+Expected: `shape` is `(frame_count, 4, 4)`, `finite` is True, and the first pose is the identity matrix. `relative_motion.npy` contains adjacent-frame motion. `metadata.json` records the checkpoint checksum, versions, timing, and other run details.
 
-**这证明程序完成了预测，不代表几何质量已经合格。下一步再用预测轨迹绘制三维切片并查看结果。**第一次结果保留；重跑时换 `--output-dir results/second_sweep`，脚本不会覆盖已有输出。
+**This confirms that prediction finished; it does not establish acceptable geometric accuracy.** Continue with [the preview](FIRST_PREVIEW.md) and [reference-based evaluation](NEXT_STEPS.md). Preserve the first result. For a new run, use another directory such as `--output-dir results/second_sweep`; existing outputs are never overwritten.
 
-## 10. 日常同步代码
+## 10. Routine code synchronization
 
-学校首次需要向 GitHub 推送时，在远程 Ubuntu 终端配置身份与认证：
+Before pushing from the school workstation for the first time, configure Git identity and authentication in remote Ubuntu:
 
 ```bash
 git config user.name "Yechuan Wei"
@@ -288,9 +288,9 @@ gh auth login
 gh auth setup-git
 ```
 
-登录时选择 GitHub.com、HTTPS、浏览器登录。公开仓库的 clone/pull 本来就不要求登录；这个认证用于 push。
+Choose GitHub.com, HTTPS, and browser sign-in. Cloning and pulling this public repository do not require authentication; this setup enables pushing.
 
-每次开始编辑前：
+Before editing:
 
 ```bash
 git status
@@ -298,7 +298,7 @@ git pull --ff-only
 git submodule update --init --recursive
 ```
 
-有未提交改动时先提交自己的改动，不用强制重置。修改完成后检查并提交；下方是修改脚本和文档时的例子，只加入实际想同步的路径：
+If you have uncommitted edits, commit your work first rather than using a forced reset. After editing, inspect and commit the intended changes. The following example covers scripts and documentation; stage only the paths you intend to synchronize:
 
 ```bash
 git diff
@@ -308,35 +308,36 @@ git commit -m "Update first-run experiment"
 git push
 ```
 
-回到自己电脑的项目文件夹，在本地 PowerShell 执行同样的 `git pull --ff-only`、`git submodule update --init --recursive` 即可获取代码。不要在 Remote 窗口里运行这一步却误认为更新了本地文件。
+To update the checkout on your own computer, open its project folder in local PowerShell and run `git pull --ff-only` followed by `git submodule update --init --recursive`. Running these commands in the remote window updates the school checkout, not your local copy.
 
-Git 只同步已提交的内容，不会实时双向同步。若 `pull --ff-only` 提示无法快进，保留报错并处理分支分歧，不用 `push --force`。`.venv`、原始数据、权重和结果已被忽略，各电脑分别维护；小结果可用 VS Code 远程资源管理器的 Download 下载查看。
+Git synchronizes committed content, not live edits in both directions. If `pull --ff-only` cannot fast-forward, retain the error and resolve the branch divergence rather than using `push --force`. The virtual environment, raw data, checkpoints, and results are ignored and remain separate on each computer. Small result files can be downloaded through the remote VS Code Explorer's **Download** action.
 
-## 故障定位速查
+## Troubleshooting
 
-| 现象 | 检查层次 |
+| Symptom | What to check |
 |---|---|
-| 找不到隧道 | 两端 GitHub 是否相同；学校隧道进程、主机和网络是否在线 |
-| 连接后是 PowerShell | 学校端是否启动了 Windows CLI；改用 Ubuntu 的 Linux CLI 全路径 |
-| Windows 看得到 GPU，WSL 看不到 | WSL 版本/更新、Windows NVIDIA 驱动；不要在 WSL 装显示驱动 |
-| PyTorch CUDA 为 False | `which python`、wheel 是否 CUDA 版、驱动是否兼容 |
-| `No module named 'dotenv'` | 保持 `.venv` 激活，`git pull --ff-only` 后重跑 `python -m pip install -r requirements-inference.txt`；依赖已补入 |
-| imports OK 失败 | 保留完整 traceback；先解决依赖，不继续下载/跑数据 |
-| `curl: (18)` / ZIP 找不到中央目录 | 验证集未下载完整；保留 ZIP，重新执行第 8 步验证集续传整段，不重下已完成的权重 |
-| 仅 `global_encoder.fc` 的 12/6 维不匹配 | 旧辅助头兼容问题；`git pull --ff-only` 更新启动脚本后重跑，仍严格加载全部权重 |
-| 其他 checkpoint keys 不匹配 | 确认子模块提交及 2024 权重，保留严格检查 |
-| `weights_only` 加载失败 | 保留报错；先核对官方 checkpoint 格式，不自动关闭安全加载 |
-| CUDA out of memory | 换空闲卡或更短的完整扫描；两卡显存不会自动合并 |
-| 进程被 Killed 而非 CUDA OOM | 检查 `free -h` 的 WSL 内存；调整主机 WSL 内存分配需另行处理 |
-| 三个输出已有 | 使用新的输出目录，保留上一轮实验 |
+| Tunnel is missing | Same GitHub account at both ends; school tunnel process, workstation, and network are online |
+| Remote terminal is PowerShell | The school tunnel may use the Windows CLI; start the Linux CLI from Ubuntu using its full path |
+| Windows sees the GPU but WSL does not | WSL version/updates and the Windows NVIDIA driver; do not install a Linux display driver inside WSL |
+| PyTorch reports CUDA unavailable | `which python`, whether the wheel includes CUDA, and driver compatibility |
+| `No module named 'dotenv'` | Activate `.venv`, run `git pull --ff-only`, then reinstall `requirements-inference.txt`; the missing dependency has been added |
+| Model import check fails | Keep the full traceback and resolve dependencies before continuing to downloads or inference |
+| `curl: (18)` or missing ZIP central directory | Keep the incomplete ZIP and rerun the validation download block in step 8; do not redownload a completed checkpoint |
+| Only `global_encoder.fc` has a 12/6 shape mismatch | Run `git pull --ff-only` for the legacy auxiliary-head compatibility fix, then rerun inference; strict loading remains enabled |
+| Other checkpoint keys do not match | Check the submodule commit and the 2024 checkpoint; retain strict validation |
+| `weights_only` loading fails | Keep the error and inspect the official checkpoint format before changing safe-loading behavior |
+| CUDA out of memory | Use a less busy GPU or a shorter complete scan; the two GPUs' memory is not automatically combined |
+| Process is `Killed` without a CUDA OOM error | Check WSL memory with `free -h`; changing the host's WSL memory allocation is a separate step |
+| Output files already exist | Use a new output directory and preserve the previous experiment |
+| Preview still uses the old interface | Regenerate it with a new `--output` path and open that new HTML; updating code does not rewrite existing HTML |
 
-## 官方参考
+## Official references
 
 - [Microsoft Remote Tunnels](https://code.visualstudio.com/docs/remote/tunnels)
-- [Microsoft WSL 命令](https://learn.microsoft.com/en-us/windows/wsl/basic-commands)
-- [VS Code CLI 命令源码](https://github.com/microsoft/vscode/blob/main/cli/src/commands/args.rs)
-- [Remote - Tunnels 扩展](https://marketplace.visualstudio.com/items?itemName=ms-vscode.remote-server)
+- [Microsoft WSL commands](https://learn.microsoft.com/en-us/windows/wsl/basic-commands)
+- [VS Code CLI command source](https://github.com/microsoft/vscode/blob/main/cli/src/commands/args.rs)
+- [Remote - Tunnels extension](https://marketplace.visualstudio.com/items?itemName=ms-vscode.remote-server)
 - [NVIDIA CUDA on WSL](https://docs.nvidia.com/cuda/wsl-user-guide/index.html)
-- [uv 安装](https://docs.astral.sh/uv/getting-started/installation/)
-- [uv 安装 Python](https://docs.astral.sh/uv/guides/install-python/)
-- [PyTorch 历史安装组合](https://pytorch.org/get-started/previous-versions/)
+- [Install uv](https://docs.astral.sh/uv/getting-started/installation/)
+- [Install Python with uv](https://docs.astral.sh/uv/guides/install-python/)
+- [Previous PyTorch installation combinations](https://pytorch.org/get-started/previous-versions/)

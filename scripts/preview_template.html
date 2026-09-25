@@ -1,18 +1,21 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="en">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Ultrasound sweep · 3D preview</title>
 <style>
 *{box-sizing:border-box}body{margin:0;background:#0c1421;color:#e4ecf5;font:14px system-ui,sans-serif}header{padding:22px 28px;border-bottom:1px solid #29374a;display:flex;justify-content:space-between;gap:18px;align-items:center}h1{font-size:22px;margin:3px 0 7px}p{margin:6px 0;color:#9eb0c7;line-height:1.6}.eyebrow{color:#65d8d0;letter-spacing:2px;font-size:11px}main{display:grid;grid-template-columns:minmax(0,1fr) 340px;min-height:580px}#scene{height:68vh;min-height:520px}aside{padding:24px;border-left:1px solid #29374a;background:#101b2b}#slice{display:block;width:100%;aspect-ratio:4/3;object-fit:contain;background:black;margin:12px 0;border-radius:8px}label{display:block;margin-top:19px;color:#b8c8dc}select,button{background:#1a2b41;color:#e4ecf5;border:1px solid #3b506b;border-radius:7px;padding:9px 12px;font:inherit;cursor:pointer}select{width:100%;margin-top:7px}button:hover{border-color:#65d8d0}button:disabled{opacity:.4;cursor:wait}input[type=range]{width:100%;accent-color:#65d8d0;margin:12px 0}#transport{padding:18px 28px;border-top:1px solid #29374a}.row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}#counter{font-variant-numeric:tabular-nums;margin-left:auto}small{color:#8fa4be;line-height:1.7}#status{color:#65d8d0}#error{color:#ffb19f;white-space:pre-wrap}#stats{font-size:12px;line-height:1.8;overflow-wrap:anywhere}@media(max-width:850px){main{grid-template-columns:1fr}aside{border-left:0;border-top:1px solid #29374a}#scene{height:60vh;min-height:400px}#slice{max-width:360px}header{display:block}}
 </style>
-<header><div><div class="eyebrow">ULTRASOUND / FIRST RECONSTRUCTION PREVIEW</div><h1>预测切片的三维布局</h1><p id="source"></p></div><small>旋转：拖动 · 缩放：滚轮 · 平移：右键拖动<br>坐标单位 mm · 原点为首帧图像中心附近</small></header>
-<main><div id="scene"></div><aside><b>当前二维切片</b><img id="slice" alt="当前帧超声切片"><div id="sliceLabel"></div>
-<label for="mode">显示方式</label><select id="mode"><option value="history">随时间累积历史点云</option><option value="current">只看当前切片</option><option value="all">全部采样帧点云</option></select>
-<label for="threshold">点云亮度门限 <span id="thresholdValue">40</span></label><input id="threshold" type="range" min="0" max="220" value="40" step="5">
-<label><input id="showSlice" type="checkbox" checked> 显示三维中的当前切片</label>
-<p id="status">正在建立三维视图…</p><p id="error" role="alert"></p><div id="stats"></div></aside></main>
-<div id="transport"><div class="row"><button id="play" disabled>播放</button><button id="previous" disabled>上一帧</button><button id="next" disabled>下一帧</button><button id="reset" disabled>重置视角</button><span id="counter"></span></div><input id="timeline" aria-label="扫查帧位置" type="range" min="0" value="0" disabled><small id="sampling"></small><p>时间轴表示扫查帧顺序，播放速度仅用于浏览。点云来自切片像素及预测位姿；尚未进行体素融合或重建精度评价。</p></div>
+<header><div><div class="eyebrow">ULTRASOUND / SLICE PLACEMENT PREVIEW</div><h1>Predicted slices in 3D</h1><p id="source"></p></div><small>Rotate: drag · Zoom: scroll · Pan: right-drag<br>Coordinates in mm, relative to the first image frame</small></header>
+<main><div id="scene"></div><aside><b>Original 2D slice</b><img id="slice" alt="Current ultrasound slice"><div id="sliceLabel"></div>
+<label for="mode">Display mode</label><select id="mode"><option value="history">Accumulate previous frames</option><option value="current">Current slice only</option><option value="all">All sampled frames</option></select>
+<label for="threshold">Point-cloud intensity threshold <span id="thresholdValue">40</span></label><input id="threshold" type="range" min="0" max="220" value="40" step="5">
+<label><input id="hideBackground" type="checkbox" checked> Hide dark background</label>
+<label for="backgroundCutoff">Background cutoff <span id="backgroundCutoffValue">5</span></label><input id="backgroundCutoff" type="range" min="0" max="40" value="5" step="1">
+<small>3D display only. Dark tissue can also be hidden; this is not segmentation.</small>
+<label><input id="showSlice" type="checkbox" checked> Show current slice in 3D</label>
+<p id="status">Building the 3D view…</p><p id="error" role="alert"></p><div id="stats"></div></aside></main>
+<div id="transport"><div class="row"><button id="play" disabled>Play</button><button id="previous" disabled>Previous</button><button id="next" disabled>Next</button><button id="reset" disabled>Reset view</button><span id="counter"></span></div><input id="timeline" aria-label="Sweep frame position" type="range" min="0" value="0" disabled><small id="sampling"></small><p>The timeline follows acquisition frame order; playback speed is for browsing. This view places pixels using predicted poses. It does not fuse a volume or establish reconstruction accuracy.</p></div>
 <script>__PLOTLY_JS__</script>
 <script id="sweep-data" type="application/json">__PAYLOAD__</script>
 <script>
@@ -21,48 +24,53 @@ const data=JSON.parse(document.getElementById('sweep-data').textContent);
 const $=id=>document.getElementById(id), frames=data.frames, total=frames.length;
 let current=total-1, playing=false, busy=false, pending=false, cameraRevision=0, playbackToken=0;
 $('source').textContent=data.source;
-$('sampling').textContent=`显示 ${total} / ${data.frame_count} 帧；像素约每 ${data.pixel_step} 点采样一次。全部原始帧已参与模型推理，显示抽稀不修改预测结果。`;
+$('sampling').textContent=`Showing ${total} / ${data.frame_count} frames, sampled at about ${data.pixel_step}-pixel intervals. Inference used all original frames; display sampling does not change the predictions.`;
 $('timeline').max=total-1; $('timeline').value=current;
-$('stats').textContent='结果结构检查通过 · 仅使用预测位姿与原图 · 文件可离线打开';
+$('stats').textContent='Numerical checks passed · Predicted poses and original images · Available offline';
 const gray=[[0,'rgb(0,0,0)'],[1,'rgb(255,255,255)']];
 const defaultCamera={eye:{x:1.6,y:1.6,z:1.1},up:{x:0,y:0,z:1}};
 function coordinates(points){return {x:points.map(p=>p[0]),y:points.map(p=>p[1]),z:points.map(p=>p[2])};}
 function matrix(values){return Array.from({length:data.rows},(_,r)=>values.slice(r*data.columns,(r+1)*data.columns));}
 function traces(){
   const frame=frames[current], limit=Number($('threshold').value), mode=$('mode').value;
+  const hideBackground=$('hideBackground').checked, backgroundCutoff=Number($('backgroundCutoff').value);
   const cloud={x:[],y:[],z:[],color:[]}, end=mode==='all'?total:current+1;
   if(mode!=='current')for(let k=0;k<end;k++){
-    const f=frames[k];for(let j=0;j<f.intensity.length;j++)if(f.intensity[j]>=limit){
+    const f=frames[k];for(let j=0;j<f.intensity.length;j++)if(f.intensity[j]>=limit&&(!hideBackground||f.intensity[j]>backgroundCutoff)){
       cloud.x.push(f.points[j][0]);cloud.y.push(f.points[j][1]);cloud.z.push(f.points[j][2]);cloud.color.push(f.intensity[j]);
     }
   }
   const xyz=coordinates(frame.points), last=(data.rows-1)*data.columns;
+  // Null surface vertices create actual holes instead of opaque black pixels.
+  // Keep the source image and prediction arrays intact; this is display masking.
+  const surfaceZ=xyz.z.map((z,i)=>hideBackground&&frame.intensity[i]<=backgroundCutoff?null:z);
   const edge=[0,data.columns-1,last+data.columns-1,last,0].map(i=>frame.points[i]);
-  $('status').textContent=`${cloud.x.length.toLocaleString()} 个显示点 · 原始第 ${frame.index+1} 帧`;
+  $('status').textContent=`${cloud.x.length.toLocaleString()} displayed points · Original frame ${frame.index+1}`;
   return [
-    {type:'scatter3d',...coordinates(data.centers),mode:'lines',line:{color:'#478e99',width:3},hoverinfo:'skip',name:'完整预测轨迹'},
-    {type:'scatter3d',x:cloud.x,y:cloud.y,z:cloud.z,mode:'markers',marker:{size:1.7,color:cloud.color,colorscale:gray,cmin:0,cmax:255,opacity:.32},hoverinfo:'skip',name:'采样像素点云'},
-    {type:'surface',x:matrix(xyz.x),y:matrix(xyz.y),z:matrix(xyz.z),surfacecolor:matrix(frame.intensity),colorscale:gray,cmin:0,cmax:255,showscale:false,visible:$('showSlice').checked,lighting:{ambient:1,diffuse:0,specular:0,fresnel:0},hoverinfo:'skip',name:'当前切片'},
-    {type:'scatter3d',...coordinates(edge),mode:'lines',line:{color:'#f5c572',width:4},hoverinfo:'skip',name:'当前切片边界'},
-    {type:'scatter3d',...coordinates([data.centers[frame.index]]),mode:'markers',marker:{size:5,color:'#65d8d0'},hoverinfo:'skip',name:'当前位置'}
+    {type:'scatter3d',...coordinates(data.centers),mode:'lines',line:{color:'#478e99',width:3},hoverinfo:'skip',name:'Predicted trajectory'},
+    {type:'scatter3d',x:cloud.x,y:cloud.y,z:cloud.z,mode:'markers',marker:{size:1.7,color:cloud.color,colorscale:gray,cmin:0,cmax:255,opacity:.32},hoverinfo:'skip',name:'Sampled pixels'},
+    {type:'surface',x:matrix(xyz.x),y:matrix(xyz.y),z:matrix(surfaceZ),connectgaps:false,surfacecolor:matrix(frame.intensity),colorscale:gray,cmin:0,cmax:255,showscale:false,visible:$('showSlice').checked,lighting:{ambient:1,diffuse:0,specular:0,fresnel:0},hoverinfo:'skip',name:'Current slice'},
+    {type:'scatter3d',...coordinates(edge),mode:'lines',line:{color:'#f5c572',width:4},hoverinfo:'skip',name:'Current slice extent'},
+    {type:'scatter3d',...coordinates([data.centers[frame.index]]),mode:'markers',marker:{size:5,color:'#65d8d0'},hoverinfo:'skip',name:'Current position'}
   ];
 }
 function layout(){
   const axis=(index,title)=>({title:{text:title},range:[data.bounds[0][index],data.bounds[1][index]],gridcolor:'#283b52',zerolinecolor:'#3b506b',backgroundcolor:'#101b2b',showbackground:true,color:'#a8bad0'});
   return {paper_bgcolor:'#0c1421',font:{color:'#c7d5e8'},margin:{l:0,r:0,t:0,b:0},showlegend:false,uirevision:cameraRevision,scene:{aspectmode:'data',camera:JSON.parse(JSON.stringify(defaultCamera)),uirevision:cameraRevision,xaxis:axis(0,'X / mm'),yaxis:axis(1,'Y / mm'),zaxis:axis(2,'Z / mm')}};
 }
-function stop(){playing=false;playbackToken++;$('play').textContent='播放';}
+function stop(){playing=false;playbackToken++;$('play').textContent='Play';}
 async function render(){
   if(busy){pending=true;return;}busy=true;
   try{
     do{
       pending=false;const f=frames[current];
-      $('slice').src=f.png;$('sliceLabel').textContent=`原始帧 ${f.index+1} / ${data.frame_count}`;
-      $('counter').textContent=`帧 ${f.index+1} / ${data.frame_count}`;$('timeline').value=current;
+      $('slice').src=f.png;$('sliceLabel').textContent=`Original frame ${f.index+1} / ${data.frame_count}`;
+      $('counter').textContent=`Frame ${f.index+1} / ${data.frame_count}`;$('timeline').value=current;
       $('thresholdValue').textContent=$('threshold').value;
+      $('backgroundCutoffValue').textContent=$('backgroundCutoff').value;
       await Plotly.react('scene',traces(),layout(),{responsive:true,displaylogo:false,scrollZoom:true,modeBarButtonsToRemove:['toImage']});
     }while(pending);
-  }catch(error){stop();$('error').textContent='无法显示三维视图：'+error.message;}finally{busy=false;}
+  }catch(error){stop();$('error').textContent='Could not render the 3D view: '+error.message;}finally{busy=false;}
 }
 async function tick(token){
   if(!playing||token!==playbackToken)return;
@@ -70,11 +78,12 @@ async function tick(token){
   if(current>=total-1){stop();return;}
   current++;await render();if(playing&&token===playbackToken)setTimeout(()=>tick(token),180);
 }
-$('play').onclick=async()=>{if(playing){stop();return;}playing=true;const token=++playbackToken;$('play').textContent='暂停';if(current===total-1)current=0;await render();setTimeout(()=>tick(token),180);};
+$('play').onclick=async()=>{if(playing){stop();return;}playing=true;const token=++playbackToken;$('play').textContent='Pause';if(current===total-1)current=0;await render();setTimeout(()=>tick(token),180);};
 $('previous').onclick=()=>{stop();current=Math.max(0,current-1);render();};
 $('next').onclick=()=>{stop();current=Math.min(total-1,current+1);render();};
 $('timeline').oninput=()=>{stop();current=Number($('timeline').value);render();};
 $('mode').onchange=()=>render();$('threshold').oninput=()=>render();$('showSlice').onchange=()=>render();
+$('hideBackground').onchange=()=>render();$('backgroundCutoff').oninput=()=>render();
 $('reset').onclick=()=>{cameraRevision++;render();};
 render().then(()=>{if(!$('error').textContent)for(const id of ['play','previous','next','reset','timeline'])$(id).disabled=false;});
 </script>
